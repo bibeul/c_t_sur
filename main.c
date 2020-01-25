@@ -27,6 +27,7 @@ typedef struct ArgForThread {
     ImageToTreat* images;
     int image_count;
     enum EffectType effect;
+    int total_treated;
 }ArgForThread;
 
 char* create_path(char* path, char* imageName) {
@@ -74,13 +75,17 @@ int count_img_in_dir(char* dir_path){
 }
 
 int find_image_to_treat(int imageCount, ImageToTreat* listImage){
+    pthread_mutex_lock(&mutex);
     for(int i = 0; i < imageCount; i++){
         printf("\n%d//%d--%d", listImage[i].treated, listImage[i].writed, i);
         if(listImage[i].treated != 1 && listImage[i].applying_treatment != 1){
             listImage[i].applying_treatment = 1;
+            pthread_mutex_unlock(&mutex);
             return i;
         }
     }
+
+    pthread_mutex_unlock(&mutex);
     return -1;
 }
 
@@ -119,6 +124,10 @@ void* treat_image_thread(void* args){
     while((index = find_image_to_treat(count, img)) != -1) {
         printf("index : %d", index);
         treat_image(&img[index], effect);
+        pthread_mutex_lock(&mutex);
+        thread_args->total_treated += 1;
+        pthread_mutex_unlock(&mutex);
+        pthread_cond_signal(&cond);
     }
 }
 
@@ -126,26 +135,62 @@ void* write_image_thread(void* args){
     ArgForThread* thread_args = (ArgForThread*) args;
     int count = thread_args->image_count;
     ImageToTreat* img = thread_args->images;
-    enum EffectType effect = thread_args->effect;
     int index;
-    while((index = find_image_to_write(count, img)) != -1){
+    while(count >= thread_args->total_treated){
+        index = find_image_to_write(count, img);
+        if(index == -1){
+            pthread_cond_wait(&cond,&mutex);
+        }
         write_image_to_bitmap(&img[index]);
+    }
+}
+enum EffectType string_to_effect(char* effect){
+    printf("%s", effect);
+    if(strcmp(effect,"blur") == 0){
+        return BOXBLUR;
+    } else if (strcmp(effect,"sharpen") == 0){
+        return SHARPEN;
+    } else if (strcmp(effect,"edge") == 0) {
+        return EDGE;
+    } else {
+        printf("Choose a valid effect : blur sharpen edge");
+        return -1;
     }
 }
 
 int main(int argc, char** argv) {
     ImageToTreat* listimg;
-    char* dir = "./images";
+    if(argv[1] == NULL || argv[2] == NULL || argv[3] == NULL || argv[4] == NULL){
+        printf("arguments format : ./in/ ./out/ 3 blur");
+        return -1;
+    }
+    char* dir = argv[1];//"./images";
+    char* out = argv[2];
+    int threads_number = atoi(argv[3]);
     int count = count_img_in_dir(dir);
-    pthread_t threadList[count];
-    pthread_t threadWrite;
-    list_image(dir, &listimg, count, "./example");
+    printf("%d", strcmp(argv[4],"blur"));
+    enum EffectType effect = string_to_effect(argv[4]);
+
+    if(threads_number > count){
+        printf("Please choose a directory with more images or choose less threads");
+        return 0;
+    }
+    if(effect == -1){
+        return effect;
+    }
+
+    list_image(dir, &listimg, count, out);
     ArgForThread* args = malloc(sizeof(int) + (sizeof(ImageToTreat) * count));
     args->images = listimg;
     args->image_count = count;
     args->effect = BOXBLUR;
+    args->total_treated = 0;
+
+    pthread_t threadList[threads_number];
+    pthread_t threadWrite;
     pthread_create(&threadWrite, NULL, treat_image_thread, (void*)args);
+    for(int i = 0; i < threads_number; i++){
+        pthread_create(&threadList[i], NULL, write_image_thread, (void*)args);
+    }
     pthread_join(threadWrite, NULL);
-    pthread_create(&threadList[0], NULL, write_image_thread, (void*)args);
-    pthread_join(threadList[0], NULL);
 }
