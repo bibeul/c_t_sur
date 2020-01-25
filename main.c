@@ -17,13 +17,10 @@ typedef struct ImageToTreat {
     char* path;
     char* path_out;
     Image img;
+    Image out;
     int treated;
     int writed;
 }ImageToTreat;
-
-void write_image_to_bitmap(Image* newImage, char* path) {
-    save_bitmap(*newImage, path);
-}
 
 char* create_path(char* path, char* imageName) {
     char* full_path = malloc(strlen(path) + strlen(imageName) + 1);
@@ -54,16 +51,78 @@ void list_image(char* dir_path, ImageToTreat** listImage, int imageCount, char* 
     *listImage=list;
 }
 
+int count_img_in_dir(char* dir_path){
+    DIR * dirp;
+    struct dirent * entry;
+    dirp = opendir(dir_path);
+
+    int count =0;
+    while ((entry = readdir(dirp)) != NULL) {
+        if (entry->d_type == DT_REG) {
+            count++;
+        }
+    }
+    return count;
+}
+
+int find_image_to_treat(int imageCount, ImageToTreat* listImage){
+    for(int i = 0; i < imageCount; i++){
+        printf("\n%d//%d--%d\n", listImage[i].treated, listImage[i].writed, i);
+        if(listImage[i].treated != 1){
+            return i;
+        }
+    }
+    return -1;
+}
+
+int find_image_to_write(int imageCount, ImageToTreat* listImage){
+    for(int i = 0; i < imageCount; i++){
+        printf("\n%d//%d--%d\n", listImage[i].treated, listImage[i].writed, i);
+        if(listImage[i].writed != 1 && listImage[i].treated == 1){
+            return i;
+        }
+    }
+    return -1;
+}
+
+void write_image_to_bitmap(ImageToTreat* listimg, int count) {
+    //int index = find_image_to_write(count, listimg);
+    int index = find_image_to_write(count, listimg);
+    printf("\n%d/-/%s\n", listimg[index].out.bmp_header.width, listimg[index].path_out);
+    if(index == -1) {
+        return;
+    }
+    save_bitmap(listimg[index].out, listimg[index].path_out);
+    listimg[index].writed = 1;
+}
+
+void treat_image(ImageToTreat* img, int count, enum EffectType effect){
+    //printf("%s/-/%s/-/%d\n", img->path, img->path_out, img->img.bmp_header.width);
+    //int index = find_image_to_treat(count, &img);
+    //printf("index : %d\n", index);
+    int index = find_image_to_treat(count, img);
+    if(index == -1) {
+        return;
+    }
+    apply_effect(&img[index].img, &img[index].out, effect);
+    img[index].treated = 1;
+}
+
+void display(ImageToTreat* listimg, int count){
+    for(int i = 0; i < count; i++){
+        printf("\n%d/;;/%d", listimg[i].treated, listimg[i].writed);
+    }
+}
+
 int main(int argc, char** argv) {
     ImageToTreat* listimg;
-    list_image("./images", &listimg, 3, "./exemple");
+    char* dir = "./images";
+    int count = count_img_in_dir(dir);
+    list_image(dir, &listimg, count, "./example");
 
-    for(int i=0; i < 3; i++){
-        printf("%s/-/%s/-/%d\n", listimg[i].path, listimg[i].path_out, listimg[i].img.bmp_header.width);
+    for(int i = 0; i < count; i++){
+        treat_image(listimg, count, SHARPEN);
+        //display(listimg, count);
+        write_image_to_bitmap(listimg, count);
     }
-    
-    Image img = open_bitmap("./images/bmp_tank1.bmp");
-    Image new_i;
-    apply_effect(&img, &new_i, SHARPEN);
-    save_bitmap(new_i, "test_out.bmp");
 }
