@@ -183,7 +183,7 @@ int main(int argc, char** argv) {
     ArgForThread* args = malloc(sizeof(int) + (sizeof(ImageToTreat) * count));
     args->images = listimg;
     args->image_count = count;
-    args->effect = BOXBLUR;
+    args->effect = effect;
     args->total_treated = 0;
 
     pthread_t threadList[threads_number];
